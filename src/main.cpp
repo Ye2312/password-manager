@@ -5,85 +5,126 @@
 #include <termios.h>
 #include <unistd.h>
 
-std::string get_password_input(const std::string& prompt) {
+// Скрываем ввод пароля (для Unix-систем)
+std::string get_hidden_input(const std::string& prompt) {
     std::cout << prompt;
     
-    termios oldt;
-    tcgetattr(STDIN_FILENO, &oldt);
-    termios newt = oldt;
-    newt.c_lflag &= ~ECHO;
-    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    termios old_settings;
+    tcgetattr(STDIN_FILENO, &old_settings);
     
-    std::string password;
-    std::getline(std::cin, password);
+    termios new_settings = old_settings;
+    new_settings.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
     
-    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-    std::cout << std::endl;
+    std::string input;
+    std::getline(std::cin, input);
     
-    return password;
+    tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
+    std::cout << "\n";
+    
+    return input;
 }
 
-void show_menu() {
-    std::cout << "\nPassword Manager Menu:\n"
-              << "1. Add new entry\n"
-              << "2. Find entries\n"
-              << "3. Generate password\n"
-              << "4. Exit\n"
-              << "Choose option: ";
+// Вывод меню
+void print_menu() {
+    std::cout << "\n🔐 Password Manager 🔐\n"
+              << "1. Add new password entry\n"
+              << "2. Find entries by service\n"
+              << "3. Generate random password\n"
+              << "4. List all entries\n"
+              << "5. Exit\n"
+              << "> ";
 }
 
 int main() {
-    PasswordManager pm;
+    PasswordManager manager;
     
     try {
-        std::string master_password = get_password_input("Enter master password: ");
-        pm.initialize(master_password);
+        // Инициализация мастер-паролем
+        std::string master_password = get_hidden_input("Enter master password: ");
+        manager.initialize(master_password);
         
         int choice = 0;
-        while (choice != 4) {
-            show_menu();
+        while (choice != 5) {
+            print_menu();
             std::cin >> choice;
-            std::cin.ignore();
+            std::cin.ignore(); // Очищаем буфер
             
             switch (choice) {
-                case 1: {
+                case 1: { // Добавление записи
                     PasswordEntry entry;
-                    std::cout << "Service: "; std::getline(std::cin, entry.service);
-                    std::cout << "Username: "; std::getline(std::cin, entry.username);
-                    entry.password = get_password_input("Password (leave empty to generate): ");
+                    std::cout << "Service: ";
+                    std::getline(std::cin, entry.service);
+                    
+                    std::cout << "Username: ";
+                    std::getline(std::cin, entry.username);
+                    
+                    std::cout << "Password (leave empty to generate): ";
+                    entry.password = get_hidden_input("");
                     
                     if (entry.password.empty()) {
-                        entry.password = pm.generate_password();
-                        std::cout << "Generated password: " << entry.password << std::endl;
+                        entry.password = manager.generate_password();
+                        std::cout << "Generated: " << entry.password << "\n";
                     }
                     
-                    std::cout << "Notes: "; std::getline(std::cin, entry.notes);
-                    pm.add_entry(entry);
+                    std::cout << "Notes: ";
+                    std::getline(std::cin, entry.notes);
+                    
+                    manager.add_entry(entry);
+                    std::cout << "✅ Entry added!\n";
                     break;
                 }
-                case 2: {
+                
+                case 2: { // Поиск по сервису
                     std::string service;
-                    std::cout << "Enter service to search: ";
+                    std::cout << "Enter service name: ";
                     std::getline(std::cin, service);
                     
-                    auto entries = pm.find_entries(service);
-                    for (const auto& e : entries) {
-                        std::cout << "\nService: " << e.service
-                                  << "\nUsername: " << e.username
-                                  << "\nPassword: " << e.password
-                                  << "\nNotes: " << e.notes << "\n";
+                    auto entries = manager.find_entries(service);
+                    if (entries.empty()) {
+                        std::cout << "No entries found.\n";
+                    } else {
+                        for (const auto& e : entries) {
+                            std::cout << "\nService: " << e.service
+                                      << "\nUsername: " << e.username
+                                      << "\nPassword: " << e.password
+                                      << "\nNotes: " << e.notes << "\n";
+                        }
                     }
                     break;
                 }
-                case 3: {
-                    auto pwd = pm.generate_password();
-                    std::cout << "Generated password: " << pwd << std::endl;
+                
+                case 3: { // Генерация пароля
+                    int length;
+                    std::cout << "Password length (default 16): ";
+                    std::cin >> length;
+                    
+                    if (length < 8) length = 16;
+                    
+                    std::string password = manager.generate_password(length);
+                    std::cout << "🔑 Generated: " << password << "\n";
                     break;
                 }
+                
+                case 4: { // Показать все записи
+                    auto entries = manager.find_entries(""); // Пустой запрос = все записи
+                    for (const auto& e : entries) {
+                        std::cout << "\nService: " << e.service
+                                  << "\nUsername: " << e.username << "\n";
+                    }
+                    break;
+                }
+                
+                case 5: // Выход
+                    std::cout << "Goodbye!\n";
+                    break;
+                    
+                default:
+                    std::cout << "Invalid choice!\n";
             }
         }
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "❌ Error: " << e.what() << "\n";
         return 1;
     }
     

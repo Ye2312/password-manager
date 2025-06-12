@@ -17,6 +17,7 @@ public:
      * @return Зашифрованные данные в формате base64
      * @throws CryptoException В случае ошибки шифрования
      */
+    static std::vector<unsigned char> generate_random_bytes(size_t length);
     static std::string encrypt(const std::string& plaintext, 
                              const std::string& key, 
                              const std::string& iv);
@@ -33,10 +34,5 @@ public:
                              const std::string& key, 
                              const std::string& iv);
 
-    /**
-     * @brief Генерирует случайные байты
-     * @param length Количество байт для генерации
-     * @return Вектор случайных байт
-     */
-    static std::vector<unsigned char> generate_random_bytes(size_t length);
+
 };

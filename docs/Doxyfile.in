@@ -1,0 +1,7 @@
+DOXYFILE_ENCODING = UTF-8
+PROJECT_NAME      = "Password Manager"
+INPUT             = ../include ../src
+RECURSIVE         = YES
+GENERATE_HTML     = YES
+GENERATE_LATEX    = NO
+QUIET             = YES
