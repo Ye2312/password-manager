@@ -8,7 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
-# Поиск зависимостей
+# Указываем путь к OpenSSL (для macOS с Homebrew)
+set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl@3)
 find_package(OpenSSL REQUIRED)
 
 # Основная библиотека
@@ -17,7 +18,7 @@ add_library(pm_core STATIC
     src/password_manager.cpp
 )
 target_include_directories(pm_core PUBLIC include)
-target_link_libraries(pm_core PRIVATE OpenSSL::Crypto)
+target_link_libraries(pm_core PRIVATE OpenSSL::Crypto OpenSSL::SSL)
 
 # Основной исполняемый файл
 add_executable(password_manager src/main.cpp)

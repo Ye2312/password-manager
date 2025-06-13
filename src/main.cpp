@@ -5,126 +5,161 @@
 #include <termios.h>
 #include <unistd.h>
 
-// Скрываем ввод пароля (для Unix-систем)
-std::string get_hidden_input(const std::string& prompt) {
-    std::cout << prompt;
-    
-    termios old_settings;
+using namespace std;
+
+string get_hidden_input(const string& prompt) {
+    cout << prompt;
+    termios old_settings, new_settings;
     tcgetattr(STDIN_FILENO, &old_settings);
-    
-    termios new_settings = old_settings;
+    new_settings = old_settings;
     new_settings.c_lflag &= ~ECHO;
     tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
     
-    std::string input;
-    std::getline(std::cin, input);
+    string input;
+    getline(cin, input);
     
     tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
-    std::cout << "\n";
-    
+    cout << "\n";
     return input;
 }
 
-// Вывод меню
+void print_entries(const vector<PasswordEntry>& entries) {
+    for (size_t i = 0; i < entries.size(); ++i) {
+        cout << i << ". Service: " << entries[i].service 
+             << "\n   Username: " << entries[i].username << "\n";
+    }
+}
+
 void print_menu() {
-    std::cout << "\n🔐 Password Manager 🔐\n"
-              << "1. Add new password entry\n"
-              << "2. Find entries by service\n"
-              << "3. Generate random password\n"
-              << "4. List all entries\n"
-              << "5. Exit\n"
-              << "> ";
+    cout << "\n🔐 Password Manager 🔐\n"
+         << "1. Add entry\n"
+         << "2. Find entries\n"
+         << "3. Generate password\n"
+         << "4. Edit entry\n"
+         << "5. Delete entry\n"
+         << "6. Password generator settings\n"
+         << "7. List all entries\n"
+         << "8. Exit\n"
+         << "> ";
+}
+
+PasswordEntry input_password_entry(bool generate_password) {
+    PasswordEntry entry;
+    cout << "Service: ";
+    getline(cin, entry.service);
+    cout << "Username: ";
+    getline(cin, entry.username);
+    
+    if (generate_password) {
+        entry.password = PasswordManager().generate_password();
+        cout << "Generated password: " << entry.password << "\n";
+    } else {
+        cout << "Password (leave empty to generate): ";
+        entry.password = get_hidden_input("");
+        if (entry.password.empty()) {
+            entry.password = PasswordManager().generate_password();
+            cout << "Generated password: " << entry.password << "\n";
+        }
+    }
+    
+    cout << "Notes: ";
+    getline(cin, entry.notes);
+    return entry;
 }
 
 int main() {
     PasswordManager manager;
     
     try {
-        // Инициализация мастер-паролем
-        std::string master_password = get_hidden_input("Enter master password: ");
+        string master_password = get_hidden_input("Enter master password: ");
         manager.initialize(master_password);
         
         int choice = 0;
-        while (choice != 5) {
+        while (choice != 8) {
             print_menu();
-            std::cin >> choice;
-            std::cin.ignore(); // Очищаем буфер
+            cin >> choice;
+            cin.ignore();
             
-            switch (choice) {
-                case 1: { // Добавление записи
-                    PasswordEntry entry;
-                    std::cout << "Service: ";
-                    std::getline(std::cin, entry.service);
-                    
-                    std::cout << "Username: ";
-                    std::getline(std::cin, entry.username);
-                    
-                    std::cout << "Password (leave empty to generate): ";
-                    entry.password = get_hidden_input("");
-                    
-                    if (entry.password.empty()) {
-                        entry.password = manager.generate_password();
-                        std::cout << "Generated: " << entry.password << "\n";
+            try {
+                switch (choice) {
+                    case 1: {
+                        PasswordEntry entry = input_password_entry(false);
+                        manager.add_entry(entry);
+                        cout << "✅ Entry added!\n";
+                        break;
                     }
-                    
-                    std::cout << "Notes: ";
-                    std::getline(std::cin, entry.notes);
-                    
-                    manager.add_entry(entry);
-                    std::cout << "✅ Entry added!\n";
-                    break;
-                }
-                
-                case 2: { // Поиск по сервису
-                    std::string service;
-                    std::cout << "Enter service name: ";
-                    std::getline(std::cin, service);
-                    
-                    auto entries = manager.find_entries(service);
-                    if (entries.empty()) {
-                        std::cout << "No entries found.\n";
-                    } else {
-                        for (const auto& e : entries) {
-                            std::cout << "\nService: " << e.service
-                                      << "\nUsername: " << e.username
-                                      << "\nPassword: " << e.password
-                                      << "\nNotes: " << e.notes << "\n";
-                        }
+                    case 2: {
+                        cout << "Search query: ";
+                        string query;
+                        getline(cin, query);
+                        auto entries = manager.find_entries(query);
+                        print_entries(entries);
+                        break;
                     }
-                    break;
-                }
-                
-                case 3: { // Генерация пароля
-                    int length;
-                    std::cout << "Password length (default 16): ";
-                    std::cin >> length;
-                    
-                    if (length < 8) length = 16;
-                    
-                    std::string password = manager.generate_password(length);
-                    std::cout << "🔑 Generated: " << password << "\n";
-                    break;
-                }
-                
-                case 4: { // Показать все записи
-                    auto entries = manager.find_entries(""); // Пустой запрос = все записи
-                    for (const auto& e : entries) {
-                        std::cout << "\nService: " << e.service
-                                  << "\nUsername: " << e.username << "\n";
+                    case 3: {
+                        cout << "Password length: ";
+                        int length;
+                        cin >> length;
+                        string password = manager.generate_password(length);
+                        cout << "🔑 Generated: " << password << "\n";
+                        break;
                     }
-                    break;
+                    case 4: {
+                        auto entries = manager.find_entries("");
+                        print_entries(entries);
+                        cout << "Enter index to edit: ";
+                        size_t index;
+                        cin >> index;
+                        cin.ignore();
+                        PasswordEntry new_entry = input_password_entry(false);
+                        manager.edit_entry(index, new_entry);
+                        cout << "✅ Entry updated!\n";
+                        break;
+                    }
+                    case 5: {
+                        auto entries = manager.find_entries("");
+                        print_entries(entries);
+                        cout << "Enter index to delete: ";
+                        size_t index;
+                        cin >> index;
+                        manager.delete_entry(index);
+                        cout << "✅ Entry deleted!\n";
+                        break;
+                    }
+                    case 6: {
+                        cout << "Password length [8-32]: ";
+                        int length;
+                        cin >> length;
+                        cout << "Use uppercase? (1/0): ";
+                        bool upper;
+                        cin >> upper;
+                        cout << "Use digits? (1/0): ";
+                        bool digits;
+                        cin >> digits;
+                        cout << "Use special chars? (1/0): ";
+                        bool special;
+                        cin >> special;
+                        manager.set_generator_settings(upper, digits, special, length);
+                        break;
+                    }
+                    case 7: {
+                        auto entries = manager.find_entries("");
+                        print_entries(entries);
+                        break;
+                    }
+                    case 8: {
+                        cout << "Goodbye!\n";
+                        break;
+                    }
+                    default:
+                        cout << "Invalid choice!\n";
                 }
-                
-                case 5: // Выход
-                    std::cout << "Goodbye!\n";
-                    break;
-                    
-                default:
-                    std::cout << "Invalid choice!\n";
+            } catch (const exception& e) {
+                cerr << "❌ Error: " << e.what() << "\n";
             }
         }
-    } catch (const std::exception& e) {
-        std::cerr << "❌ Error: " << e.what() << "\n";
+    } catch (const exception& e) {
+        cerr << "❌ Critical error: " << e.what() << "\n";
         return 1;
     }
     
