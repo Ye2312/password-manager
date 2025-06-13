@@ -7,9 +7,12 @@
 class PasswordManagerTestFixture : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Удаляем файл перед каждым тестом
         remove("passwords.db");
         pm.initialize("test123");
+    }
+
+    void TearDown() override {
+        remove("passwords.db");
     }
 
     PasswordManager pm;
@@ -54,4 +57,34 @@ TEST_F(PasswordManagerTestFixture, ErrorHandling) {
     EXPECT_THROW(pm.edit_entry(1, new_entry), std::out_of_range);
 
     EXPECT_THROW(pm.delete_entry(1), std::out_of_range);
+}
+
+TEST_F(PasswordManagerTestFixture, SaveLoad) {
+    PasswordEntry entry{"save_test", "user", "pass", "note"};
+    pm.add_entry(entry);
+    pm.save_entries();
+
+    PasswordManager new_pm;
+    new_pm.initialize("test123");
+    auto found = new_pm.find_entries("save_test");
+    ASSERT_EQ(found.size(), 1);
+    EXPECT_EQ(found[0].service, "save_test");
+}
+
+TEST_F(PasswordManagerTestFixture, VerifyMasterPassword) {
+    EXPECT_TRUE(pm.verify_master_password("test123"));
+    EXPECT_FALSE(pm.verify_master_password("wrongpass"));
+}
+
+TEST_F(PasswordManagerTestFixture, EdgeCases) {
+    PasswordEntry long_entry{
+        std::string(100, 'a'), // Очень длинный сервис
+        "user",
+        std::string(100, 'b'), // Очень длинный пароль
+        ""
+    };
+    EXPECT_NO_THROW(pm.add_entry(long_entry));
+
+    auto found = pm.find_entries(std::string(100, 'a'));
+    EXPECT_EQ(found.size(), 1);
 }

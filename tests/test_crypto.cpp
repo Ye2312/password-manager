@@ -22,3 +22,12 @@ TEST(CryptoTest, RandomBytes) {
     EXPECT_EQ(bytes1.size(), 32);
     EXPECT_NE(bytes1, bytes2);
 }
+
+TEST(CryptoTest, ErrorHandling) {
+    std::string key(32, 'a');
+    std::string iv(16, 'b');
+    
+    EXPECT_THROW(Crypto::encrypt("", key, iv), std::invalid_argument); // Пустой текст
+    EXPECT_THROW(Crypto::decrypt("", key, iv), std::invalid_argument); // Пустой шифротекст
+    EXPECT_THROW(Crypto::encrypt("test", std::string(16, 'a'), iv), std::invalid_argument); // Короткий ключ
+}

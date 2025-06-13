@@ -5,9 +5,10 @@
 #include <stdexcept>
 #include <algorithm>
 #include <vector>
-#include <cstdlib>
+#include <nlohmann/json.hpp>
 #include <openssl/evp.h>
 using namespace std;
+using json = nlohmann::json;
 
 static string vector_to_string(const vector<unsigned char>& vec) {
     return string(vec.begin(), vec.end());
@@ -19,7 +20,21 @@ static string generate_iv() {
 }
 
 void PasswordManager::initialize(const string& master_password, const string& storage_path) {
-    master_key_ = derive_key(master_password);
+    ifstream file(storage_path, ios::binary);
+    if (file.is_open()) {
+        string data((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+        file.close();
+        if (data.size() >= 32) { // salt (16) + IV (16)
+            salt_ = vector<unsigned char>(data.begin(), data.begin() + 16); // Восстанавливаем salt
+            master_key_ = derive_key(master_password); // Используем восстановленный salt
+        } else {
+            salt_ = Crypto::generate_random_bytes(16); // Новый salt, если файла нет
+            master_key_ = derive_key(master_password);
+        }
+    } else {
+        salt_ = Crypto::generate_random_bytes(16); // Новый salt, если файла нет
+        master_key_ = derive_key(master_password);
+    }
     storage_path_ = storage_path;
     load_entries();
 }
@@ -54,8 +69,7 @@ void PasswordManager::set_generator_settings(bool use_upper, bool use_digits, bo
 vector<PasswordEntry> PasswordManager::find_entries(const string& query) const {
     vector<PasswordEntry> result;
     for (const auto& entry : entries_) {
-        if (entry.service.find(query) != string::npos || 
-            entry.username.find(query) != string::npos) {
+        if (entry.service.find(query) != string::npos || entry.username.find(query) != string::npos) {
             result.push_back(entry);
         }
     }
@@ -68,18 +82,28 @@ string PasswordManager::generate_password(int length, bool use_upper, bool use_d
     const string digits = "0123456789";
     const string special = "!@#$%^&*()";
 
+    bool final_use_upper = (use_upper != true) ? use_upper : gen_settings_.use_upper;
+    bool final_use_digits = (use_digits != true) ? use_digits : gen_settings_.use_digits;
+    bool final_use_special = (use_special != true) ? use_special : gen_settings_.use_special;
+    int final_length = (length > 0) ? length : gen_settings_.length;
+
     string chars = lower;
-    if (use_upper) chars += upper;
-    if (use_digits) chars += digits;
-    if (use_special) chars += special;
+    if (final_use_upper) chars += upper;
+    if (final_use_digits) chars += digits;
+    if (final_use_special) chars += special;
+
+    if (chars.empty()) {
+        throw invalid_argument("No character sets selected for password generation");
+    }
 
     string result;
-    int actual_length = (length > 0) ? length : gen_settings_.length;
-    for (int i = 0; i < actual_length; ++i) {
-        result += chars[rand() % chars.size()];
+    vector<unsigned char> random_bytes = Crypto::generate_random_bytes(final_length);
+    for (int i = 0; i < final_length; ++i) {
+        result += chars[random_bytes[i] % chars.size()];
     }
     return result;
 }
+
 void PasswordManager::save_entries() const {
     string json_data = "[";
     for (const auto& entry : entries_) {
@@ -91,45 +115,51 @@ void PasswordManager::save_entries() const {
 
     string iv = generate_iv();
     string encrypted_data = Crypto::encrypt(json_data, master_key_, iv);
-    string full_data = iv + encrypted_data; // IV + зашифрованные данные
+    string full_data = vector_to_string(salt_) + iv + encrypted_data; // Сохраняем salt + IV + данные
 
     ofstream file(storage_path_, ios::binary);
     if (!file) {
         throw runtime_error("Failed to save entries");
     }
     file.write(full_data.data(), full_data.size());
-    file.close(); // Явное закрытие файла
+    file.close();
 }
 
 void PasswordManager::load_entries() {
     ifstream file(storage_path_, ios::binary);
-    if (!file) return; // Игнорируем, если файла нет
+    if (!file) return;
 
-    // Читаем весь файл в буфер
-    string encrypted_data((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
-    file.close(); // Явное закрытие файла
-    if (encrypted_data.size() <= 16) return; // IV занимает 16 байт
+    string data((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+    file.close();
+    if (data.size() <= 32) return; // salt (16) + IV (16)
 
     try {
-        string iv = encrypted_data.substr(0, 16);
-        string actual_data = encrypted_data.substr(16);
-        string json_data = Crypto::decrypt(actual_data, master_key_, iv);
-        // TODO: JSON parsing
-        entries_.clear(); // Очищаем перед загрузкой
-        // Здесь должен быть парсинг JSON, но пока оставляем пустым
+        salt_ = vector<unsigned char>(data.begin(), data.begin() + 16); // Восстанавливаем salt
+        string iv = data.substr(16, 16); // Извлекаем IV
+        string encrypted_data = data.substr(32); // Извлекаем зашифрованные данные
+        string json_data = Crypto::decrypt(encrypted_data, master_key_, iv);
+
+        entries_.clear();
+        json j = json::parse(json_data);
+        for (const auto& item : j) {
+            PasswordEntry entry;
+            entry.service = item["service"].get<string>();
+            entry.username = item["username"].get<string>();
+            entry.password = item["password"].get<string>();
+            entry.notes = item["notes"].get<string>();
+            entries_.push_back(entry);
+        }
     } catch (const exception& e) {
         throw runtime_error("Failed to load entries: " + string(e.what()));
     }
 }
 
-
 string PasswordManager::derive_key(const string& password) const {
-    const unsigned char* salt = Crypto::generate_random_bytes(16).data();
-    unsigned char key[32]; // 256 бит
+    unsigned char key[32];
     int iterations = 10000;
 
     if (PKCS5_PBKDF2_HMAC(password.c_str(), password.size(),
-                         salt, 16,
+                         salt_.data(), salt_.size(),
                          iterations,
                          EVP_sha256(),
                          32, key) != 1) {

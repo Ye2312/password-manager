@@ -39,7 +39,8 @@ void print_menu() {
          << "5. Delete entry\n"
          << "6. Password generator settings\n"
          << "7. List all entries\n"
-         << "8. Exit\n"
+         << "8. View password\n"
+         << "9. Exit\n"
          << "> ";
 }
 
@@ -75,10 +76,10 @@ int main() {
         manager.initialize(master_password);
         
         int choice = 0;
-        while (choice != 8) {
+        while (choice != 9) {
             print_menu();
             cin >> choice;
-            cin.ignore();
+            cin.ignore(); // Очищаем буфер после ввода числа
             
             try {
                 switch (choice) {
@@ -100,7 +101,11 @@ int main() {
                         cout << "Password length: ";
                         int length;
                         cin >> length;
-                        string password = manager.generate_password(length);
+                        cin.ignore(); // Очищаем буфер
+                        string password = manager.generate_password(length,
+                            manager.get_use_upper(),
+                            manager.get_use_digits(),
+                            manager.get_use_special());
                         cout << "🔑 Generated: " << password << "\n";
                         break;
                     }
@@ -140,6 +145,7 @@ int main() {
                         bool special;
                         cin >> special;
                         manager.set_generator_settings(upper, digits, special, length);
+                        cout << "Settings updated!\n";
                         break;
                     }
                     case 7: {
@@ -148,6 +154,30 @@ int main() {
                         break;
                     }
                     case 8: {
+                        auto entries = manager.find_entries("");
+                        print_entries(entries);
+                        cout << "Enter index to view password: ";
+                        size_t index;
+                        cin >> index;
+                        cin.ignore(); // Очищаем буфер после ввода индекса
+                        if (index < entries.size()) {
+                            cout << "Re-enter master password to view: ";
+                            string confirm_password = get_hidden_input("");
+                            if (manager.verify_master_password(confirm_password)) {
+                                const auto& entry = entries[index];
+                                cout << "Service: " << entry.service 
+                                     << "\nUsername: " << entry.username 
+                                     << "\nPassword: " << entry.password 
+                                     << "\nNotes: " << entry.notes << "\n";
+                            } else {
+                                cout << "❌ Wrong master password!\n";
+                            }
+                        } else {
+                            cout << "❌ Invalid index!\n";
+                        }
+                        break;
+                    }
+                    case 9: {
                         cout << "Goodbye!\n";
                         break;
                     }

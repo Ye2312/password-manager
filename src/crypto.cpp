@@ -16,6 +16,10 @@ vector<unsigned char> Crypto::generate_random_bytes(size_t length) {
 }
 
 string Crypto::encrypt(const string& plaintext, const string& key, const string& iv) {
+    if (plaintext.empty() || key.empty() || iv.empty() || key.length() != 32 || iv.length() != 16) {
+        throw std::invalid_argument("Invalid input parameters for encryption: plaintext, key (32 bytes), or IV (16 bytes) is invalid");
+    }
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) throw CryptoException("Failed to create cipher context");
 
@@ -49,6 +53,10 @@ string Crypto::encrypt(const string& plaintext, const string& key, const string&
 }
 
 string Crypto::decrypt(const string& ciphertext, const string& key, const string& iv) {
+    if (ciphertext.empty() || key.empty() || iv.empty() || key.length() != 32 || iv.length() != 16) {
+        throw std::invalid_argument("Invalid input parameters for decryption: ciphertext, key (32 bytes), or IV (16 bytes) is invalid");
+    }
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) throw CryptoException("Failed to create cipher context");
 
